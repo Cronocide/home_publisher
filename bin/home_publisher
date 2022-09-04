@@ -6,7 +6,6 @@
 import re
 import os
 import sys
-import yaml
 import logging
 import argparse
 import requests
