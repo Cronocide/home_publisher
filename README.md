@@ -4,13 +4,13 @@
 ## Usage
 
 ```
-
+home_publisher /path/to/file.ini -vv
 ```
 
 ## Installation
 
 1. Run pip3 install home_publisher
-2. Write a systemd job or something I'm not your dev
+2. Write a systemd job or something IDK I'm not your dev
 3. Profit
 
 ## Configuration
@@ -37,10 +37,6 @@ address: 192.168.0.4
 port: 4567
 address: 192.168.0.4
 ```
-
-Run it like this:
-
-`home_publisher /path/to/file.ini -vv`
 
 ## Justification
 
