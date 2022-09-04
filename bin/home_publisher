@@ -177,7 +177,8 @@ if __name__ == '__main__':
 	EXAMPLE_TEXT='Example:\n\thome_publisher -h'
 	parser = argparse.ArgumentParser(epilog=EXAMPLE_TEXT,formatter_class=argparse.RawDescriptionHelpFormatter)
 	parser.add_argument('cnf_file', action='append', help='The path to the CNF file to process.')
-	parser.add_argument('-H', '--hosts', action='append', default=None, help='Collects arguments in an array.')
+	parser.add_argument('-C', '--cloudflare', action='store_true', default=None, help='Update Cloudflare.')
+	parser.add_argument('-U', '--unifi', action='store_true', default=None, help='Update Unifi.')
 	parser.add_argument('-d', '--dry-run', action='store_true', help='Store the existence of a variable.')
 	parser.add_argument('-l', '--log', action='store', help='Specify a file to log to.')
 	parser.add_argument('-v', '--verbose', action='count', help='Include debug information in the output. Add \'v\'s for more output.',default=0)
@@ -206,39 +207,45 @@ if __name__ == '__main__':
 	config = load_config(args.cnf_file)
 	current_conf_names = [k for (k,v) in config.items() if k not in ['DEFAULT','fault']]
 	public_ip = requests.get('https://ip.cronocide.com').text
-	# Load delegates
-	cfdelegate = CloudflareDelegate()
-	unifidelegate = UnifiDelegate()
+
 	# Update Cloudflare
-	records = cfdelegate.records()
-	# Delete missing HTTP records
-	for record in records :
-		record_name = record['name'].strip(os.environ['CF_DOMAIN'])
-		if record_name not in current_conf_names :
-			logging.info(f'Removing DNS record for {record_name}')
-			if not args.dry_run :
-				cfdelegate.remove_record(record)
-	# Add new HTTP records
-	for name in current_conf_names :
-		cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
-		if name not in cf_records :
-			logging.info(f'Adding DNS record for {name}')
-			if not args.dry_run :
-				cfdelegate.add_record(name,public_ip)
-	logging.info('Finished with Cloudflare')
+	if args.cloudflare :
+		cfdelegate = CloudflareDelegate()
+		records = cfdelegate.records()
+		# Delete missing HTTP records
+		for record in records :
+			record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+			if record_name not in current_conf_names :
+				logging.info(f'Removing DNS record for {record_name}')
+				if not args.dry_run :
+					cfdelegate.remove_record(record)
+		# Add new HTTP records
+		for name in current_conf_names :
+			cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
+			if name not in cf_records :
+				logging.info(f'Adding DNS record for {name}')
+				if not args.dry_run :
+					cfdelegate.add_record(name,public_ip)
+		logging.info('Finished with Cloudflare')
+	else :
+		logging.info('Skipping Cloudflare.')
 	# Update Unifi
-	records = unifidelegate.records()
-	# Disable inactive rules
-	for record in records :
-		record_name = record['name'].lstrip(UNIFI_PREFIX)
-		if record_name not in current_conf_names :
-			logging.info(f'Removing Unifi record for {record_name}')
-			if not args.dry_run :
-				unifidelegate.remove_record(record['_id'])
-	# Enable new rules
-	for name in current_conf_names :
-		if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
-			logging.info(f'Adding Unifi record for {name}')
-			if not args.dry_run :
-				unifidelegate.add_record(name,config[name]['address'],config[name]['port'])
-	logging.info('Finished with Unifi')
+	if args.unifi :
+		unifidelegate = UnifiDelegate()
+		records = unifidelegate.records()
+		# Disable inactive rules
+		for record in records :
+			record_name = record['name'].lstrip(UNIFI_PREFIX)
+			if record_name not in current_conf_names :
+				logging.info(f'Removing Unifi record for {record_name}')
+				if not args.dry_run :
+					unifidelegate.remove_record(record['_id'])
+		# Enable new rules
+		for name in current_conf_names :
+			if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
+				logging.info(f'Adding Unifi record for {name}')
+				if not args.dry_run :
+					unifidelegate.add_record(name,config[name]['address'],config[name]['port'])
+		logging.info('Finished with Unifi')
+	else :
+		logging.info('Skipping Unifi.')
