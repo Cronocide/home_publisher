@@ -1,0 +1,245 @@
+#!python3
+# v1.0 Sep 2022
+# by Daniel Dayley
+# This was thrown together in an afternoon as API glue for my firewall and DNS. It's crappy code. It could use a lot of love.
+
+import re
+import os
+import sys
+import yaml
+import logging
+import argparse
+import requests
+import CloudFlare
+import configparser
+
+# Disable SSL warnings
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+UNIFI_PREFIX = 'CT:'
+CLOUDFLARE_PREFIX = 'ct.'
+
+class LoggingFormatter(logging.Formatter):
+	def format(self, record):
+		module_max_width = 30
+		datefmt='%Y/%m/%d/ %H:%M:%S'
+		level = f'[{record.levelname}]'.ljust(9)
+		if 'cs_module' not in dir(record) :
+			modname = str(record.module)+'.'+str(record.name)
+		else :
+			modname = record.cs_module
+		modname = (f'{modname}'[:module_max_width-1] + ']').ljust(module_max_width)
+		final = "%-7s %s [%s %s" % (self.formatTime(record, self.datefmt), level, modname, record.getMessage())
+		return final
+
+class CloudflareDelegate :
+
+	log = logging.getLogger(__name__)
+	log = logging.LoggerAdapter(log,{'cs_module':'cfdelegate'})
+	conf = {}
+	zone_id = None
+	records = None
+	def __init__(self) :
+		required_env = ["CLOUDFLARE_API_KEY","CF_DOMAIN"]
+		try :
+			for req in required_env :
+				self.conf.update({req:os.environ[req]})
+		except Exception as e :
+			self.log.error(f'Missing required ENV var \'{req}\'')
+			exit(1)
+		self.cf = CloudFlare.CloudFlare()
+		zones = self.cf.zones.get(params = {'per_page':100})
+		zone = [z for z in zones if z['name'] == self.conf['CF_DOMAIN']][0]
+		self.zone_id = zone['id']
+
+	def get_txt_tracker(self) :
+		records = self.cf.zones.dns_records.get(self.zone_id)
+		txt_record = [r for r in records if r['name'] == CLOUDFLARE_PREFIX + os.environ['CF_DOMAIN'] and r['type'] == 'TXT']
+		# Use _ as a placeholder when no names are tracked.
+		if len(txt_record) < 1 or txt_record[0]['content'] == '_':
+			return []
+		txt_record = txt_record[0]
+		managed_list = txt_record['content'].split(',')
+		return managed_list
+
+	def update_txt_tracker(self,add_list,remove_list) :
+		records = self.cf.zones.dns_records.get(self.zone_id)
+		txt_record = [r for r in records if r['name'] == CLOUDFLARE_PREFIX + os.environ['CF_DOMAIN'] and r['type'] == 'TXT']
+		managed_list = self.get_txt_tracker()
+		for item in remove_list :
+			try :
+				managed_list.remove(item)
+			except :
+				pass
+		for item in add_list :
+			if item not in managed_list :
+				managed_list.append(item)
+		if len(txt_record) > 0 :
+			txt_record = txt_record[0]
+			self.cf.zones.dns_records.delete(self.zone_id, txt_record['id'])
+		if len(managed_list) > 0 :
+			self.cf.zones.dns_records.post(self.zone_id, data={'name':CLOUDFLARE_PREFIX.strip('.'), 'type':'TXT', 'content':','.join(managed_list)})
+		else :
+			# Use _ as a placeholder when no names are tracked.
+			self.cf.zones.dns_records.post(self.zone_id, data={'name':CLOUDFLARE_PREFIX.strip('.'), 'type':'TXT', 'content':'_'})
+
+
+	def records(self) :
+		records = self.cf.zones.dns_records.get(self.zone_id)
+		managed_list = self.get_txt_tracker()
+		records = [r for r in records if r['name'].strip(os.environ['CF_DOMAIN']) in managed_list ]
+		return records
+
+
+	def remove_record(self,record) :
+		record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+		self.update_txt_tracker([],[record_name])
+		self.cf.zones.dns_records.delete(self.zone_id, record['id'])
+
+
+	def add_record(self,name,ip) :
+		self.update_txt_tracker([name],[])
+		self.cf.zones.dns_records.post(self.zone_id, data={'name':name, 'type':'A', 'content':ip, 'proxied': True})
+
+
+class UnifiDelegate :
+	log = logging.getLogger(__name__)
+	log = logging.LoggerAdapter(log,{'cs_module':'cfdelegate'})
+	conf = {}
+	site_id = None
+	session = requests.Session()
+	headers = {"Accept": "application/json","Content-Type": "application/json"}
+	def __init__(self) :
+		required_env = ["UNIFI_URL","UNIFI_USERNAME","UNIFI_PASSWORD","UNIFI_SITE"]
+		try :
+			for req in required_env :
+				self.conf.update({req:os.environ[req]})
+		except Exception as e :
+			self.log.error(f'Missing required ENV var \'{req}\'')
+			exit(1)
+		try :
+			login = self.session.post(self.conf['UNIFI_URL'] + '/api/login',json={'username':self.conf['UNIFI_USERNAME'],'password':self.conf['UNIFI_PASSWORD'],'strict': False, 'remember': False},verify=False)
+			if login.status_code != 200 :
+				raise Exception('Login failed')
+			info = self.session.get(self.conf['UNIFI_URL'] + '/api/self/sites',verify=False).json()
+			self.site_id = info['data'][0]['_id']
+		except Exception as e :
+			self.log.error(f'Unable to log into Unifi controller: {str(e)}')
+
+
+	def records(self) :
+		try :
+			pfs = self.session.get(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/',verify=False).json()
+			pfs = [pf for pf in pfs['data'] if pf['name'].startswith(UNIFI_PREFIX)]
+			return pfs
+		except Exception as e :
+			self.log.error(e)
+
+	def remove_record(self,rec_id) :
+		try :
+			disable = self.session.delete(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/' + rec_id,verify=False).json()
+		except Exception as e :
+			self.log.error(e)
+
+	def add_record(self,name,address,port) :
+		port = int(port)
+		try :
+			payload = {
+			'enabled': True,
+			'pfwd_interface': 'wan',
+			'name': UNIFI_PREFIX + name,
+			'dst_port': port,
+			'fwd': address,
+			'fwd_port': port,
+			'src': 'any',
+			'proto': 'tcp_udp',
+			'site_id': self.site_id
+			}
+			enable = self.session.post(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/',verify=False,json=payload).json()
+		except Exception as e :
+			self.log.error(e)
+
+if __name__ == '__main__':
+
+	# Configuration loading and parsing
+	def load_config(path):
+		"""Parses a CNF file for CertSync and appends a pipeline to the object's run stack."""
+		# Parse CNF file
+		try :
+			config = configparser.ConfigParser()
+			config.SECTCRE = re.compile(r'\[ *(?P<header>[^]]+?) *\]')
+			config.read(path)
+			return config
+		except Exception as e:
+			raise TypeError('Unable to parse cnf file')
+
+	# Gather Argument options
+	EXAMPLE_TEXT='Example:\n\thome_publisher -h'
+	parser = argparse.ArgumentParser(epilog=EXAMPLE_TEXT,formatter_class=argparse.RawDescriptionHelpFormatter)
+	parser.add_argument('cnf_file', action='append', help='The path to the CNF file to process.')
+	parser.add_argument('-H', '--hosts', action='append', default=None, help='Collects arguments in an array.')
+	parser.add_argument('-d', '--dry-run', action='store_true', help='Store the existence of a variable.')
+	parser.add_argument('-l', '--log', action='store', help='Specify a file to log to.')
+	parser.add_argument('-v', '--verbose', action='count', help='Include debug information in the output. Add \'v\'s for more output.',default=0)
+	args = parser.parse_args()
+
+	# Configure logging
+	log_options = [logging.ERROR, logging.WARNING, logging.INFO, logging.DEBUG]
+	if not args.verbose :
+		args.verbose = 0
+	if args.verbose > 3 :
+		args.verbose = 3
+	if args.log :
+		logging.basicConfig(level=log_options[args.verbose],filename=args.log)
+		logging.getLogger().addHandler(logging.StreamHandler(sys.stderr))
+	else :
+		logging.basicConfig(level=log_options[args.verbose])
+	logging.getLogger().handlers[0].setFormatter(LoggingFormatter())
+	logging.propagate=True
+
+	# Load config fron ini file.
+	# I expect a name as the header, then the port, and IP
+	args.cnf_file = args.cnf_file[0]
+	if not (os.path.exists(args.cnf_file) and os.path.isfile(args.cnf_file)) :
+		logging.error(f'{args.cnf_file}: No such file.')
+		exit(1)
+	config = load_config(args.cnf_file)
+	current_conf_names = [k for (k,v) in config.items() if k not in ['DEFAULT','fault']]
+	public_ip = requests.get('https://ip.cronocide.com').text
+	# Load delegates
+	cfdelegate = CloudflareDelegate()
+	unifidelegate = UnifiDelegate()
+	# Update Cloudflare
+	records = cfdelegate.records()
+	# Delete missing HTTP records
+	for record in records :
+		record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+		if record_name not in current_conf_names :
+			logging.info(f'Removing DNS record for {record_name}')
+			if not args.dry_run :
+				cfdelegate.remove_record(record)
+	# Add new HTTP records
+	for name in current_conf_names :
+		cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
+		if name not in cf_records :
+			logging.info(f'Adding DNS record for {name}')
+			if not args.dry_run :
+				cfdelegate.add_record(name,public_ip)
+	logging.info('Finished with Cloudflare')
+	# Update Unifi
+	records = unifidelegate.records()
+	# Disable inactive rules
+	for record in records :
+		record_name = record['name'].lstrip(UNIFI_PREFIX)
+		if record_name not in current_conf_names :
+			logging.info(f'Removing Unifi record for {record_name}')
+			if not args.dry_run :
+				unifidelegate.remove_record(record['_id'])
+	# Enable new rules
+	for name in current_conf_names :
+		if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
+			logging.info(f'Adding Unifi record for {name}')
+			if not args.dry_run :
+				unifidelegate.add_record(name,config[name]['address'],config[name]['port'])
+	logging.info('Finished with Unifi')
