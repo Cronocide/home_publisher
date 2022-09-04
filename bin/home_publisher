@@ -85,22 +85,30 @@ class CloudflareDelegate :
 
 
 	def records(self) :
-		records = self.cf.zones.dns_records.get(self.zone_id)
-		managed_list = self.get_txt_tracker()
-		records = [r for r in records if r['name'].strip(os.environ['CF_DOMAIN']) in managed_list ]
-		return records
+		try :
+			records = self.cf.zones.dns_records.get(self.zone_id)
+			managed_list = self.get_txt_tracker()
+			records = [r for r in records if r['name'].strip(os.environ['CF_DOMAIN']) in managed_list ]
+			return records
+		except Exception as e :
+			self.log.error(e)
 
 
 	def remove_record(self,record) :
-		record_name = record['name'].strip(os.environ['CF_DOMAIN'])
-		self.update_txt_tracker([],[record_name])
-		self.cf.zones.dns_records.delete(self.zone_id, record['id'])
+		try :
+			record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+			self.update_txt_tracker([],[record_name])
+			self.cf.zones.dns_records.delete(self.zone_id, record['id'])
+		except Exception as e :
+			self.log.error(e)
 
 
 	def add_record(self,name,ip) :
-		self.update_txt_tracker([name],[])
-		self.cf.zones.dns_records.post(self.zone_id, data={'name':name, 'type':'A', 'content':ip, 'proxied': True})
-
+		try :
+			self.update_txt_tracker([name],[])
+			self.cf.zones.dns_records.post(self.zone_id, data={'name':name, 'type':'A', 'content':ip, 'proxied': True})
+		except Exception as e :
+			self.log.error(e)
 
 class UnifiDelegate :
 	log = logging.getLogger(__name__)
