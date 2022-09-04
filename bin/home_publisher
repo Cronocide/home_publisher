@@ -166,7 +166,7 @@ if __name__ == '__main__':
 		"""Parses a CNF file for CertSync and appends a pipeline to the object's run stack."""
 		# Parse CNF file
 		try :
-			config = configparser.ConfigParser()
+			config = configparser.ConfigParser(strict=False)
 			config.SECTCRE = re.compile(r'\[ *(?P<header>[^]]+?) *\]')
 			config.read(path)
 			return config
