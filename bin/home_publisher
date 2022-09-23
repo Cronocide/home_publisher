@@ -47,10 +47,14 @@ class CloudflareDelegate :
 		except Exception as e :
 			self.log.error(f'Missing required ENV var \'{req}\'')
 			exit(1)
-		self.cf = CloudFlare.CloudFlare()
-		zones = self.cf.zones.get(params = {'per_page':100})
-		zone = [z for z in zones if z['name'] == self.conf['CF_DOMAIN']][0]
-		self.zone_id = zone['id']
+		try :
+			self.cf = CloudFlare.CloudFlare()
+			zones = self.cf.zones.get(params = {'per_page':100})
+			zone = [z for z in zones if z['name'] == self.conf['CF_DOMAIN']][0]
+			self.zone_id = zone['id']
+		except Exception as e :
+			self.log.error(f'Unable to log in to Cloudflare: {str(e)}')
+			exit(1)
 
 	def get_txt_tracker(self) :
 		records = self.cf.zones.dns_records.get(self.zone_id)
@@ -227,6 +231,12 @@ if __name__ == '__main__':
 				logging.info(f'Removing DNS record for {record_name}')
 				if not args.dry_run :
 					cfdelegate.remove_record(record)
+			# Remove if record is different
+			if record['content'] != public_ip :
+				logging.info(f'Updating DNS record for {record_name}')
+				if not args.dry_run :
+					cfdelegate.remove_record(record)
+					cfdelegate.add_record(name,public_ip)
 		# Add new HTTP records
 		for name in current_conf_names :
 			cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
@@ -248,6 +258,12 @@ if __name__ == '__main__':
 				logging.info(f'Removing Unifi record for {record_name}')
 				if not args.dry_run :
 					unifidelegate.remove_record(record['_id'])
+			# Remove if record is different
+			if record_name in current_conf_names and record['fwd'] != config[record_name]['address'] or  record['dst_port'] != config[record_name]['port'] :
+				logging.info(f'Updating forward record for {record_name}')
+				if not args.dry_run :
+					unifidelegate.remove_record(record['_id'])
+					unifidelegate.add_record(record_name,config[record_name]['address'],config[record_name]['port'])
 		# Enable new rules
 		for name in current_conf_names :
 			if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
