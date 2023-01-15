@@ -236,7 +236,7 @@ if __name__ == '__main__':
 				logging.info(f'Updating DNS record for {record_name}')
 				if not args.dry_run :
 					cfdelegate.remove_record(record)
-					cfdelegate.add_record(name,public_ip)
+					cfdelegate.add_record(record_name,public_ip)
 		# Add new HTTP records
 		for name in current_conf_names :
 			cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
@@ -264,6 +264,7 @@ if __name__ == '__main__':
 				if not args.dry_run :
 					unifidelegate.remove_record(record['_id'])
 					unifidelegate.add_record(record_name,config[record_name]['address'],config[record_name]['port'])
+					current_conf_names.remove(record_name)
 		# Enable new rules
 		for name in current_conf_names :
 			if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
