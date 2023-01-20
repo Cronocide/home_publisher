@@ -7,7 +7,21 @@ Used with consul and consul-template, it a a powerful way to deploy dynamic serv
 ## Usage
 
 ```
-home_publisher /path/to/file.ini -vv
+usage: home_publisher [-h] [-C] [-U] [-d] [-l LOG] [-v] cnf_file
+
+positional arguments:
+  cnf_file           The path to the CNF file to process.
+
+options:
+  -h, --help         show this help message and exit
+  -C, --cloudflare   Update Cloudflare.
+  -U, --unifi        Update Unifi.
+  -d, --dry-run      Describe the changes but don't make any changes.
+  -l LOG, --log LOG  Specify a file to log to.
+  -v, --verbose      Include debug information in the output. Add 'v's for more output.
+
+Example:
+	home_publisher -vv /path/to/file.ini
 ```
 
 ## Installation
