@@ -259,7 +259,7 @@ if __name__ == '__main__':
 				if not args.dry_run :
 					unifidelegate.remove_record(record['_id'])
 			# Remove if record is different
-			if record_name in current_conf_names and record['fwd'] != config[record_name]['address'] or  record['dst_port'] != config[record_name]['port'] :
+			if record_name in current_conf_names and (str(record['fwd']) != str(config[record_name]['address']) or  str(record['dst_port']) != str(config[record_name]['port'])) :
 				logging.info(f'Updating forward record for {record_name}')
 				if not args.dry_run :
 					unifidelegate.remove_record(record['_id'])
