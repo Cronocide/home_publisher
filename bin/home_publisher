@@ -253,7 +253,7 @@ if __name__ == '__main__':
 		records = unifidelegate.records()
 		# Disable inactive rules
 		for record in records :
-			record_name = record['name'].lstrip(UNIFI_PREFIX)
+			record_name = record['name'].replace(UNIFI_PREFIX, '')
 			if record_name not in current_conf_names :
 				logging.info(f'Removing Unifi record for {record_name}')
 				if not args.dry_run :
@@ -267,7 +267,7 @@ if __name__ == '__main__':
 					current_conf_names.remove(record_name)
 		# Enable new rules
 		for name in current_conf_names :
-			if name not in [r['name'].lstrip(UNIFI_PREFIX) for r in records] :
+			if name not in [r['name'].replace(UNIFI_PREFIX, '') for r in records] :
 				logging.info(f'Adding Unifi record for {name}')
 				if not args.dry_run :
 					unifidelegate.add_record(name,config[name]['address'],config[name]['port'])
