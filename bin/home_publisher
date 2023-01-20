@@ -92,7 +92,7 @@ class CloudflareDelegate :
 		try :
 			records = self.cf.zones.dns_records.get(self.zone_id)
 			managed_list = self.get_txt_tracker()
-			records = [r for r in records if r['name'].strip(os.environ['CF_DOMAIN']) in managed_list ]
+			records = [r for r in records if r['name'].replace('.' + os.environ['CF_DOMAIN'], '') in managed_list ]
 			return records
 		except Exception as e :
 			self.log.error(e)
@@ -100,7 +100,7 @@ class CloudflareDelegate :
 
 	def remove_record(self,record) :
 		try :
-			record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+			record_name = record['name'].replace('.' + os.environ['CF_DOMAIN'],'')
 			self.update_txt_tracker([],[record_name])
 			self.cf.zones.dns_records.delete(self.zone_id, record['id'])
 		except Exception as e :
@@ -226,7 +226,7 @@ if __name__ == '__main__':
 		records = cfdelegate.records()
 		# Delete missing HTTP records
 		for record in records :
-			record_name = record['name'].strip(os.environ['CF_DOMAIN'])
+			record_name = record['name'].replace('.' + os.environ['CF_DOMAIN'],'')
 			if record_name not in current_conf_names :
 				logging.info(f'Removing DNS record for {record_name}')
 				if not args.dry_run :
@@ -239,7 +239,7 @@ if __name__ == '__main__':
 					cfdelegate.add_record(record_name,public_ip)
 		# Add new HTTP records
 		for name in current_conf_names :
-			cf_records = [r['name'].strip(os.environ['CF_DOMAIN']) for r in records]
+			cf_records = [r['name'].replace('.' + os.environ['CF_DOMAIN'], '') for r in records]
 			if name not in cf_records :
 				logging.info(f'Adding DNS record for {name}')
 				if not args.dry_run :
