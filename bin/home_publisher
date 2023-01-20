@@ -222,6 +222,7 @@ if __name__ == '__main__':
 
 	# Update Cloudflare
 	if args.cloudflare :
+		logging.info('Starting with Cloudflare.')
 		cfdelegate = CloudflareDelegate()
 		records = cfdelegate.records()
 		# Delete missing HTTP records
@@ -249,6 +250,7 @@ if __name__ == '__main__':
 		logging.info('Skipping Cloudflare.')
 	# Update Unifi
 	if args.unifi :
+		logging.info('Starting with Unifi.')
 		unifidelegate = UnifiDelegate()
 		records = unifidelegate.records()
 		# Disable inactive rules
