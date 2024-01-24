@@ -57,4 +57,4 @@ address: 192.168.0.4
 
 ## Justification
 
-This is only public because I'm too lazy to clone from a private repo right now.
+This is a public mirror of the private repository.
