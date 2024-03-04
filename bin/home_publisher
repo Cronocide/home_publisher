@@ -120,7 +120,6 @@ class UnifiDelegate :
 	conf = {}
 	site_id = None
 	session = requests.Session()
-	headers = {"Accept": "application/json","Content-Type": "application/json"}
 	def __init__(self) :
 		required_env = ["UNIFI_URL","UNIFI_USERNAME","UNIFI_PASSWORD","UNIFI_SITE"]
 		try :
@@ -155,7 +154,9 @@ class UnifiDelegate :
 
 	def remove_record(self,rec_id) :
 		try :
-			disable = self.session.delete(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/' + rec_id,verify=False).json()
+			disable = self.session.delete(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/' + rec_id,verify=False)
+			if disable.status_code != 200 :
+				self.log.error('Unable to remove record: ' + str(disable.json()))
 		except Exception as e :
 			self.log.error(e)
 
@@ -173,7 +174,9 @@ class UnifiDelegate :
 			'proto': 'tcp_udp',
 			'site_id': self.site_id
 			}
-			enable = self.session.post(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/',verify=False,json=payload).json()
+			enable = self.session.post(self.conf['UNIFI_URL'] + '/api/s/' + self.conf['UNIFI_SITE'] + '/rest/portforward/',verify=False,json=payload)
+			if enable.status_code != 200 :
+                                self.log.error('Unable to remove record: ' + str(enable.json()))
 		except Exception as e :
 			self.log.error(e)
 
