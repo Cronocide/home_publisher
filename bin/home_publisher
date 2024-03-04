@@ -132,8 +132,10 @@ class UnifiDelegate :
 		try :
 			login = self.session.post(self.conf['UNIFI_URL'] + '/api/login',json={'username':self.conf['UNIFI_USERNAME'],'password':self.conf['UNIFI_PASSWORD'],'strict': False, 'remember': False},verify=False)
 			if login.status_code != 200 :
-				# Add the UnifiOS Auth prefix in case it's a UnifiOS device
+				# If this is a UnifiOS device, add the auth prefix and csrf token.
 				login = self.session.post(self.conf['UNIFI_URL'] + '/api/auth/login',json={'username':self.conf['UNIFI_USERNAME'],'password':self.conf['UNIFI_PASSWORD'],'strict': False, 'remember': False},verify=False)
+				csrf_token = login.headers['x-csrf-token']
+				self.session.headers.update({'x-csrf-token':csrf_token})
 				self.conf['UNIFI_URL'] = self.conf['UNIFI_URL'] + '/proxy/network'
 				if login.status_code != 200 :
 					raise Exception('Login failed')
