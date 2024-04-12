@@ -54,7 +54,7 @@ setup(name='home_publisher',
 	description='An automation to update public infrastructure to represent my internal lab',
 	packages=find_packages(exclude=['tests']),
 
-	install_requires=['CloudFlare','configparser','requests'],
+	install_requires=['CloudFlare==2.19.2','configparser','requests'],
 	scripts=['bin/home_publisher'],
 	long_description=open('README.md').read(),
 	zip_safe=True
